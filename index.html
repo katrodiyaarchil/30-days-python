@@ -6,6 +6,7 @@
     <title>30-Day Advanced Python Challenge</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -79,6 +80,34 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* Styles for rendered markdown */
+        #ai-guidance-output h1, #ai-guidance-output h2, #ai-guidance-output h3, #ai-guidance-output h4, #ai-guidance-output h5 {
+            font-weight: 700;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        #ai-guidance-output h1 { font-size: 1.875rem; }
+        #ai-guidance-output h2 { font-size: 1.5rem; }
+        #ai-guidance-output h3 { font-size: 1.25rem; }
+        #ai-guidance-output h4 { font-size: 1.125rem; }
+        #ai-guidance-output h5 { font-size: 1rem; }
+        #ai-guidance-output p { margin-bottom: 0.5rem; }
+        #ai-guidance-output ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
+        #ai-guidance-output ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
+        #ai-guidance-output li { margin-bottom: 0.25rem; }
+        #ai-guidance-output code {
+            background-color: #e5e7eb;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+        }
+        #ai-guidance-output pre {
+            background-color: #f3f4f6;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body class="bg-stone-50 text-stone-800">
@@ -151,7 +180,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         document.addEventListener('DOMContentLoaded', async () => {
             const projects = [
@@ -338,29 +367,11 @@
             
             const renderGuidance = (text) => {
                 const outputDiv = document.getElementById('ai-guidance-output');
-                const lines = text.split('\n');
-                let html = '';
-                let inList = false;
-
-                lines.forEach(line => {
-                    line = line.trim();
-                    if (line.startsWith('###') || line.startsWith('##') || line.startsWith('# ')) {
-                        if (inList) { html += '</ul>'; inList = false; }
-                        html += `<h5 class="text-lg font-bold mt-4 mb-2">${line.replace(/#/g, '').trim()}</h5>`;
-                    } else if (line.match(/^\d+\./)) {
-                        if (!inList) { html += '<ul class="list-decimal list-inside space-y-2">'; inList = true; }
-                        html += `<li>${line.replace(/^\d+\./, '').trim()}</li>`;
-                    } else if (line.startsWith('* ') || line.startsWith('- ')) {
-                        if (!inList) { html += '<ul class="list-disc list-inside space-y-2">'; inList = true; }
-                        html += `<li>${line.substring(2).trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</li>`;
-                    } else if (line) {
-                         if (inList) { html += '</ul>'; inList = false; }
-                        html += `<p>${line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>`;
-                    }
-                });
-
-                if (inList) { html += '</ul>'; }
-                outputDiv.innerHTML = html;
+                if (window.marked) {
+                    outputDiv.innerHTML = marked.parse(text);
+                } else {
+                    outputDiv.textContent = text;
+                }
             };
 
             const closeModal = () => {
@@ -374,8 +385,6 @@
                     db = getFirestore(app);
                     auth = getAuth(app);
                     
-                    await enableNetwork(db);
-
                     onAuthStateChanged(auth, user => {
                         if (user) {
                             userId = user.uid;
@@ -412,6 +421,7 @@
                     if (docSnap.exists()) {
                         state.completed = docSnap.data().completed || [];
                     } else {
+                        // This will create the document if it doesn't exist for a new user.
                         setDoc(userDocRef, { completed: [] });
                         state.completed = [];
                     }
@@ -426,9 +436,28 @@
                     updateProgress();
                 }, (error) => {
                     console.error("Firestore snapshot error:", error);
-                    loadingStateDiv.innerHTML = '<p class="text-red-500">Error fetching data. Progress might be out of sync.</p>';
-                    mainContentDiv.classList.remove('hidden');
-                    initializeAppUI();
+                    if (error.code === 'permission-denied') {
+                        loadingStateDiv.innerHTML = `
+                            <div class="text-center p-4 border border-red-200 bg-red-50 rounded-lg max-w-2xl mx-auto">
+                                <p class="text-red-600 font-bold text-lg">Firestore Security Rule Error</p>
+                                <p class="text-stone-700 mt-2">Your database's security rules are blocking access. This is a common setup issue for new projects.</p>
+                                <p class="text-stone-600 mt-3 text-sm">Please go to your <a href="https://console.firebase.google.com/" target="_blank" class="text-sky-600 underline">Firebase Console</a> &rarr; Firestore Database &rarr; <strong>Rules</strong> tab, and replace the existing rules with the following:</p>
+                                <pre class="bg-stone-200 text-stone-800 text-left text-xs p-3 mt-2 rounded-md overflow-x-auto"><code>
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        // Allow users to read and write only their own documents
+        match /artifacts/{appId}/users/{userId}/{documents=**} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+    }
+                                </code></pre>
+                            </div>
+                        `;
+                    } else {
+                        loadingStateDiv.innerHTML = '<p class="text-red-500">Error fetching data. Progress might be out of sync.</p>';
+                    }
                 });
             };
             
