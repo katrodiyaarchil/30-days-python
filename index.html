@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>30-Day Advanced Python Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutral - Background: bg-stone-50, Text: text-stone-800, Primary Accent: bg-sky-600, Completion Accent: bg-emerald-500 -->
+    <!-- Application Structure Plan: The application is designed as an interactive dashboard. The core structure is a filterable grid of project cards, organized by week. This task-oriented layout allows the user to easily track their progress through the challenge. A top-level summary section with a progress bar and a skills chart provides immediate, high-level feedback and motivation. Project details are shown in a modal window to keep the main interface clean and focused. This structure was chosen because a structured challenge benefits from a clear, visual path and a sense of accomplishment, which the progress tracking and checklist-style interaction provide. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Overall Challenge Structure -> Goal: Show skill distribution -> Viz: Radar Chart (Chart.js) -> Interaction: Static view -> Justification: Provides an immediate, high-level overview of the learning domains covered in the challenge.
+        - Report Info: Daily Projects -> Goal: Organize and track individual tasks -> Presentation: Interactive Cards in a grid -> Interaction: Click to view details in a modal, checkbox to mark complete -> Justification: This keeps the main view uncluttered while providing easy, on-demand access to detailed project requirements. The checklist interaction provides tangible feedback and a sense of accomplishment.
+        - Report Info: Challenge Progress -> Goal: Motivate and provide clear feedback -> Viz: Dynamic Progress Bar (HTML/CSS/JS) -> Interaction: Updates automatically when a project is marked complete -> Justification: Offers a clear, immediate, and motivating visualization of overall progress.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .project-card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .project-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .project-card.completed {
+            background-color: #f0fdf4; /* emerald-50 */
+            border-color: #10b981; /* emerald-500 */
+        }
+        .project-card.completed .day-badge {
+            background-color: #10b981; /* emerald-500 */
+            color: white;
+        }
+        .custom-checkbox:checked {
+            background-color: #0284c7; /* sky-600 */
+            border-color: #0284c7; /* sky-600 */
+        }
+        .custom-checkbox:checked::after {
+            content: '✔';
+            color: white;
+            display: block;
+            text-align: center;
+            line-height: 1.25rem; /* h-5 */
+            font-size: 0.8rem;
+        }
+        .chart-container {
+            position: relative; 
+            width: 100%; 
+            max-width: 400px; 
+            margin-left: auto; 
+            margin-right: auto; 
+            height: 300px;
+            max-height: 350px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0284c7;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        .small-loader {
+            width: 20px;
+            height: 20px;
+            border-width: 2px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-800">
+
+    <div id="app" class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-sky-800">30-Day Advanced Python Challenge</h1>
+            <p class="mt-2 text-lg text-stone-600">A tailored plan to elevate your Python skills, now with AI-powered guidance.</p>
+        </header>
+
+        <div id="loading-state" class="flex flex-col items-center justify-center my-16">
+            <div class="loader"></div>
+            <p class="mt-4 text-stone-600">Connecting to persistence service...</p>
+        </div>
+
+        <div id="main-content" class="hidden">
+            <section id="summary" class="mb-8 p-6 bg-white rounded-xl shadow-sm">
+                <h2 class="text-2xl font-bold mb-4 text-center">Challenge Progress</h2>
+                <div class="grid md:grid-cols-2 gap-8 items-center">
+                    <div class="flex flex-col justify-center">
+                        <div class="w-full bg-stone-200 rounded-full h-6 mb-2">
+                            <div id="progress-bar" class="bg-emerald-500 h-6 rounded-full text-center text-white text-sm font-medium leading-6 transition-all duration-500" style="width: 0%;">0%</div>
+                        </div>
+                        <p id="progress-text" class="text-center text-stone-600">0 of 12 projects completed.</p>
+                        <p class="mt-4 text-center text-stone-700">This dashboard provides an interactive way to track your journey. Each week introduces a new domain of advanced Python. Your progress is saved automatically and is unique to you.</p>
+                    </div>
+                    <div>
+                        <div class="chart-container">
+                            <canvas id="skillsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="challenge-board">
+                <div class="flex flex-wrap justify-center gap-2 mb-8">
+                    <button data-filter="all" class="filter-btn bg-sky-600 text-white py-2 px-4 rounded-full font-semibold">All Weeks</button>
+                    <button data-filter="1" class="filter-btn bg-white text-sky-700 py-2 px-4 rounded-full font-semibold">Week 1</button>
+                    <button data-filter="2" class="filter-btn bg-white text-sky-700 py-2 px-4 rounded-full font-semibold">Week 2</button>
+                    <button data-filter="3" class="filter-btn bg-white text-sky-700 py-2 px-4 rounded-full font-semibold">Week 3</button>
+                    <button data-filter="4" class="filter-btn bg-white text-sky-700 py-2 px-4 rounded-full font-semibold">Week 4</button>
+                    <button data-filter="5" class="filter-btn bg-white text-sky-700 py-2 px-4 rounded-full font-semibold">Bonus Week</button>
+                </div>
+
+                <div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                </div>
+            </section>
+             <footer class="text-center mt-8 text-xs text-stone-400">
+                <p>Your progress is saved automatically.</p>
+                <p>User ID: <span id="user-id"></span></p>
+            </footer>
+        </div>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div id="modal-content" class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 id="modal-title" class="text-2xl font-bold text-sky-800"></h3>
+                    <p id="modal-days" class="text-sm text-stone-500 font-medium"></p>
+                </div>
+                <button id="modal-close" class="text-2xl font-bold text-stone-500 hover:text-stone-800">&times;</button>
+            </div>
+            <div id="modal-body" class="prose max-w-none">
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove, enableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const projects = [
+                { id: 1, week: 1, days: "1-4", title: "GraphQL Microservice", description: "Build a GraphQL API using FastAPI and Strawberry for a social media app.", features: ["Define schemas for User, Post, and Comment.", "Implement mutations for creating users, posts, and comments.", "Implement queries to fetch user profiles, a user's posts, and a post's comments.", "Connect to a PostgreSQL database using SQLAlchemy."], advanced: "Implement data loaders to solve the N+1 query problem inherent in GraphQL.", references: [{text: "FastAPI Docs", url: "https://fastapi.tiangolo.com/"}, {text: "Strawberry GraphQL Docs", url: "https://strawberry.rocks/"}, {text: "SQLAlchemy ORM", url: "https://www.sqlalchemy.org/"}] },
+                { id: 2, week: 1, days: "5-7", title: "Real-Time Chat App", description: "Create a multi-room chat service using WebSockets.", features: ["Use FastAPI's WebSocket support to manage persistent connections.", "Create a ConnectionManager class to handle broadcasting messages to clients in specific rooms.", "Build a simple HTML/JavaScript frontend to interact with the WebSocket backend."], advanced: "Use Redis Pub/Sub to broadcast messages across multiple instances of your chat service, making it horizontally scalable.", references: [{text: "FastAPI WebSockets", url: "https://fastapi.tiangolo.com/advanced/websockets/"}, {text: "Redis Pub/Sub", url: "https://redis.io/docs/manual/pubsub/"}] },
+                { id: 3, week: 2, days: "8-11", title: "Workflow Orchestration", description: "Build a data pipeline that scrapes, processes, and stores data from a public API.", features: ["Use Dagster or Apache Airflow.", "Define a DAG with steps: fetch_data, process_data (with pandas), and store_data (in ClickHouse/PostgreSQL)."], advanced: "Parameterize your pipeline to trigger runs for different inputs and add automated testing for your pipeline steps.", references: [{text: "Dagster Docs", url: "https://docs.dagster.io/"}, {text: "Apache Airflow Docs", url: "https://airflow.apache.org/docs/"}, {text: "Pandas", url: "https://pandas.pydata.org/docs/"}] },
+                { id: 4, week: 2, days: "12-14", title: "Custom Service Rate Limiter", description: "Implement a sophisticated rate limiter for a FastAPI application.", features: ["Use Redis with a sliding window log algorithm to track requests.", "Create it as a FastAPI dependency that can be applied to any endpoint.", "Support different rates for different endpoints."], advanced: "Make the rate limiter return informative headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset).", references: [{text: "Redis Docs", url: "https://redis.io/docs/"}, {text: "Sliding Window Algorithm", url: "https://konghq.com/blog/how-to-design-a-scalable-rate-limiter"}] },
+                { id: 5, week: 3, days: "15-18", title: "Deploy a Recommendation Engine", description: "Create and deploy a content recommendation API.", features: ["Train a collaborative filtering model with scikit-learn on the MovieLens dataset.", "Save the model as a .pkl artifact.", "Build a FastAPI service to load the model and expose a recommendation endpoint.", "Dockerize the entire service."], advanced: "Integrate the model loading into the application's startup event for efficiency.", references: [{text: "Scikit-learn", url: "https://scikit-learn.org/stable/"}, {text: "Docker Docs", url: "https://docs.docker.com/"}, {text: "MovieLens Dataset", url: "https://grouplens.org/datasets/movielens/"}] },
+                { id: 6, week: 3, days: "19-21", title: "Basic MLOps CI/CD Pipeline", description: "Automate the training and deployment of the recommendation engine.", features: ["Use GitHub Actions to create a workflow triggered on push to main.", "The workflow should test, re-train the model, version the artifact in S3, and build/push a new Docker image."], advanced: "Add a manual approval step in your GitHub Action before deploying the new model to a 'production' environment.", references: [{text: "GitHub Actions Docs", url: "https://docs.github.com/en/actions"}, {text: "DVC (Data Version Control)", url: "https://dvc.org/doc"}, {text: "AWS S3", url: "https://aws.amazon.com/s3/"}] },
+                { id: 7, week: 4, days: "22-25", title: "Asynchronous Web Scraper", description: "Build a high-performance web scraper for hundreds of URLs.", features: ["Use asyncio and aiohttp for asynchronous HTTP requests.", "Use BeautifulSoup for parsing HTML.", "Implement a producer-consumer pattern using asyncio.Queue."], advanced: "Add error handling with exponential backoff and save results asynchronously with aiofiles.", references: [{text: "asyncio Docs", url: "https://docs.python.org/3/library/asyncio.html"}, {text: "aiohttp Docs", url: "https://docs.aiohttp.org/"}, {text: "aiofiles", url: "https://github.com/Tinche/aiofiles"}] },
+                { id: 8, week: 4, days: "26-28", title: "Custom CLI Tool with Typer", description: "Create a command-line interface to manage a previous project.", features: ["Use Typer for modern CLI development.", "Implement commands like `train-model`, `deploy-model --version <v>`, and `get-status --service-name <name>`."], advanced: "Add rich formatting to the CLI output using the Rich library.", references: [{text: "Typer Docs", url: "https://typer.tiangolo.com/"}, {text: "Rich Library", url: "https://rich.readthedocs.io/en/latest/"}] },
+                { id: 9, week: 4, days: "29-30", title: "Profiling and Optimization", description: "Find and fix a performance bottleneck in a Python application.", features: ["Profile inefficient code using cProfile and visualize with snakeviz.", "Identify the bottleneck and refactor it (e.g., using NumPy or Cython)."], advanced: "Benchmark the before and after versions to quantify the performance improvement.", references: [{text: "cProfile Docs", url: "https://docs.python.org/3/library/profile.html"}, {text: "snakeviz", url: "https://jiffyclub.github.io/snakeviz/"}, {text: "Cython", url: "https://cython.org/"}] },
+                { id: 10, week: 5, days: "31-33", title: "Infrastructure as Code", description: "Write Terraform scripts to provision AWS infrastructure for a service.", features: ["Define resources for an EC2 instance or ECS cluster, an S3 bucket for model artifacts, and necessary IAM roles/policies."], advanced: "Use Terraform workspaces to manage separate environments (e.g., staging vs. production).", references: [{text: "Terraform Docs", url: "https://www.terraform.io/docs"}, {text: "Terraform on AWS", url: "https://learn.hashicorp.com/collections/terraform/aws-get-started"}] },
+                { id: 11, week: 5, days: "34-37", title: "RAG Agent", description: "Create a chatbot that can answer questions about a specific document.", features: ["Use LangChain or LlamaIndex.", "Load a document, split it, and store it in a vector database (ChromaDB/FAISS).", "Create a chain to find relevant chunks and use an LLM to generate an answer.", "Wrap the agent in a simple Gradio or Streamlit UI."], advanced: "Implement conversation history to allow for follow-up questions.", references: [{text: "LangChain Docs", url: "https://python.langchain.com/docs/get_started/introduction"}, {text: "LlamaIndex Docs", url: "https://docs.llamaindex.ai/en/stable/"}, {text: "Gradio", url: "https://www.gradio.app/docs/interface"}] },
+                { id: 12, week: 5, days: "Bonus", title: "Contribute to Open Source", description: "Find a Python project you use and make a contribution.", features: ["Find a bug or a small feature to add.", "Read the contribution guidelines.", "Submit a pull request."], advanced: "Get your PR merged!", references: [{text: "Good First Issues", url: "https://goodfirstissue.dev/"}, {text: "GitHub Explore", url: "https://github.com/explore"}] }
+            ];
+
+            const state = {
+                filter: 'all',
+                completed: []
+            };
+
+            let db, auth, userId, userDocRef;
+            
+            const firebaseConfig = {
+              apiKey: "AIzaSyAwVtJgs9LpGvGpRjXbLYLajojTtD30iXo",
+              authDomain: "python-challenge-dashboard.firebaseapp.com",
+              projectId: "python-challenge-dashboard",
+              storageBucket: "python-challenge-dashboard.firebasestorage.app",
+              messagingSenderId: "640599538148",
+              appId: "1:640599538148:web:532c656cca9b093ef42ff1",
+              measurementId: "G-TLP3NNBXEM"
+            };
+            const appId = "python-challenge-dashboard";
+
+            const loadingStateDiv = document.getElementById('loading-state');
+            const mainContentDiv = document.getElementById('main-content');
+            const projectsGrid = document.getElementById('projects-grid');
+            const modal = document.getElementById('modal');
+            const modalClose = document.getElementById('modal-close');
+            const filterBtns = document.querySelectorAll('.filter-btn');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const userIdSpan = document.getElementById('user-id');
+
+            const renderProjects = () => {
+                if (!projectsGrid) return;
+                projectsGrid.innerHTML = '';
+                const filteredProjects = projects.filter(p => state.filter === 'all' || p.week == state.filter);
+
+                if (filteredProjects.length === 0) {
+                    projectsGrid.innerHTML = `<p class="text-stone-500 col-span-full text-center">No projects for this week.</p>`;
+                    return;
+                }
+
+                filteredProjects.forEach(project => {
+                    const isCompleted = state.completed.includes(project.id);
+                    const card = document.createElement('div');
+                    card.className = `project-card bg-white rounded-xl border p-5 flex flex-col justify-between cursor-pointer shadow-sm ${isCompleted ? 'completed' : ''}`;
+                    card.dataset.id = project.id;
+
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="day-badge bg-sky-100 text-sky-800 text-xs font-bold px-3 py-1 rounded-full">Days ${project.days}</span>
+                                <div class="flex items-center">
+                                    <label for="check-${project.id}" class="text-sm text-stone-500 mr-2">Done</label>
+                                    <input type="checkbox" id="check-${project.id}" data-id="${project.id}" class="custom-checkbox appearance-none h-5 w-5 border-2 border-stone-300 rounded-md checked:bg-sky-600 checked:border-transparent focus:outline-none" ${isCompleted ? 'checked' : ''}>
+                                </div>
+                            </div>
+                            <h3 class="text-xl font-bold mb-2 text-stone-900">${project.title}</h3>
+                            <p class="text-stone-600 text-sm">${project.description}</p>
+                        </div>
+                        <div class="text-right mt-4">
+                            <span class="text-sky-600 font-semibold text-sm">View Details &rarr;</span>
+                        </div>
+                    `;
+                    projectsGrid.appendChild(card);
+                });
+            };
+
+            const updateProgress = () => {
+                const completedCount = state.completed.length;
+                const totalCount = projects.length;
+                const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+                
+                progressBar.style.width = `${percentage}%`;
+                progressBar.textContent = `${percentage}%`;
+                progressText.textContent = `${completedCount} of ${totalCount} projects completed.`;
+            };
+
+            const openModal = (projectId) => {
+                const project = projects.find(p => p.id == projectId);
+                if (!project) return;
+
+                document.getElementById('modal-title').textContent = project.title;
+                document.getElementById('modal-days').textContent = `Week ${project.week} / Days ${project.days}`;
+                const body = document.getElementById('modal-body');
+                let referencesHTML = '';
+                if(project.references && project.references.length > 0) {
+                    referencesHTML = `
+                    <div class="mt-6 pt-4 border-t">
+                        <h4 class="font-bold text-lg mb-2">References & Resources:</h4>
+                        <ul class="list-none space-y-1">
+                            ${project.references.map(r => `<li><a href="${r.url}" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline">${r.text} &rarr;</a></li>`).join('')}
+                        </ul>
+                    </div>
+                    `;
+                }
+                
+                const aiGuidanceHTML = `
+                    <div id="ai-guidance-section" class="mt-6 pt-4 border-t">
+                        <h4 class="font-bold text-lg mb-2">AI Guidance</h4>
+                        <p class="text-sm text-stone-600 mb-4">Need help getting started? Ask our AI mentor to break down the project into steps and explain key concepts.</p>
+                        <button id="ai-guidance-btn" class="bg-sky-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-sky-700 transition-colors flex items-center gap-2">
+                            ✨ Get AI-Powered Plan
+                        </button>
+                        <div id="ai-guidance-output" class="mt-4 p-4 bg-stone-100 rounded-lg hidden"></div>
+                    </div>
+                `;
+
+                body.innerHTML = `
+                    <p class="text-lg text-stone-700 mb-4">${project.description}</p>
+                    <h4 class="font-bold text-lg mb-2">Features:</h4>
+                    <ul class="list-disc list-inside space-y-1 mb-4">
+                        ${project.features.map(f => `<li>${f}</li>`).join('')}
+                    </ul>
+                    <div class="bg-sky-50 border-l-4 border-sky-500 p-4 rounded-r-lg">
+                        <h4 class="font-bold text-lg mb-2 text-sky-900">🚀 Advanced Touch:</h4>
+                        <p class="text-sky-800">${project.advanced}</p>
+                    </div>
+                    ${referencesHTML}
+                    ${aiGuidanceHTML}
+                `;
+                
+                document.getElementById('ai-guidance-btn').addEventListener('click', () => getAIGuidance(project));
+
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            };
+
+            const getAIGuidance = async (project) => {
+                const guidanceBtn = document.getElementById('ai-guidance-btn');
+                const outputDiv = document.getElementById('ai-guidance-output');
+                
+                guidanceBtn.disabled = true;
+                guidanceBtn.innerHTML = '<div class="loader small-loader"></div> Generating...';
+                outputDiv.classList.remove('hidden');
+                outputDiv.innerHTML = '<div class="flex items-center justify-center"><div class="loader"></div></div>';
+
+                const proxyApiUrl = "https://workers-playground-square-cake-a0fa.jaybahotiya124.workers.dev/"; 
+
+                const payload = { project: project };
+
+                try {
+                    const response = await fetch(proxyApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `API request failed with status ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        renderGuidance(text);
+                    } else {
+                        throw new Error("Invalid response structure from API.");
+                    }
+
+                } catch (error) {
+                    console.error("AI guidance call failed:", error);
+                    outputDiv.innerHTML = `<p class="text-red-500">Sorry, I couldn't generate guidance at this time. Error: ${error.message}</p>`;
+                } finally {
+                    guidanceBtn.disabled = false;
+                    guidanceBtn.innerHTML = '✨ Regenerate Plan';
+                }
+            };
+            
+            const renderGuidance = (text) => {
+                const outputDiv = document.getElementById('ai-guidance-output');
+                const lines = text.split('\n');
+                let html = '';
+                let inList = false;
+
+                lines.forEach(line => {
+                    line = line.trim();
+                    if (line.startsWith('###') || line.startsWith('##') || line.startsWith('# ')) {
+                        if (inList) { html += '</ul>'; inList = false; }
+                        html += `<h5 class="text-lg font-bold mt-4 mb-2">${line.replace(/#/g, '').trim()}</h5>`;
+                    } else if (line.match(/^\d+\./)) {
+                        if (!inList) { html += '<ul class="list-decimal list-inside space-y-2">'; inList = true; }
+                        html += `<li>${line.replace(/^\d+\./, '').trim()}</li>`;
+                    } else if (line.startsWith('* ') || line.startsWith('- ')) {
+                        if (!inList) { html += '<ul class="list-disc list-inside space-y-2">'; inList = true; }
+                        html += `<li>${line.substring(2).trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</li>`;
+                    } else if (line) {
+                         if (inList) { html += '</ul>'; inList = false; }
+                        html += `<p>${line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>`;
+                    }
+                });
+
+                if (inList) { html += '</ul>'; }
+                outputDiv.innerHTML = html;
+            };
+
+            const closeModal = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            };
+
+            const initializeFirebase = async () => {
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    
+                    await enableNetwork(db);
+
+                    onAuthStateChanged(auth, user => {
+                        if (user) {
+                            userId = user.uid;
+                            userIdSpan.textContent = userId;
+                            userDocRef = doc(db, "artifacts", appId, "users", userId);
+                            setupSnapshotListener();
+                        } else {
+                            signInAnonymously(auth).catch(error => {
+                                console.error("Anonymous sign-in failed:", error);
+                                if (error.code === 'auth/configuration-not-found') {
+                                    loadingStateDiv.innerHTML = `
+                                        <div class="text-center p-4 border border-red-200 bg-red-50 rounded-lg max-w-lg">
+                                            <p class="text-red-600 font-bold">Firebase Configuration Error</p>
+                                            <p class="text-stone-700 mt-2">Anonymous sign-in is not enabled for your Firebase project.</p>
+                                            <p class="text-stone-600 mt-1 text-sm">Please go to your Firebase Console &rarr; Authentication &rarr; Sign-in method, and enable the 'Anonymous' provider.</p>
+                                        </div>
+                                    `;
+                                } else {
+                                    loadingStateDiv.innerHTML = '<p class="text-red-500">Could not connect to persistence service. Progress will not be saved.</p>';
+                                }
+                            });
+                        }
+                    });
+                } catch (error) {
+                    console.error("Firebase initialization failed:", error);
+                    loadingStateDiv.innerHTML = '<p class="text-red-500">Could not initialize persistence service. Check your Firebase config. Progress will not be saved.</p>';
+                    mainContentDiv.classList.remove('hidden');
+                    initializeAppUI();
+                }
+            };
+
+            const setupSnapshotListener = () => {
+                onSnapshot(userDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        state.completed = docSnap.data().completed || [];
+                    } else {
+                        setDoc(userDocRef, { completed: [] });
+                        state.completed = [];
+                    }
+                    
+                    if (loadingStateDiv.style.display !== 'none') {
+                        loadingStateDiv.style.display = 'none';
+                        mainContentDiv.classList.remove('hidden');
+                        initializeAppUI();
+                    }
+
+                    renderProjects();
+                    updateProgress();
+                }, (error) => {
+                    console.error("Firestore snapshot error:", error);
+                    loadingStateDiv.innerHTML = '<p class="text-red-500">Error fetching data. Progress might be out of sync.</p>';
+                    mainContentDiv.classList.remove('hidden');
+                    initializeAppUI();
+                });
+            };
+            
+            const handleProjectCompletion = async (projectId, isCompleted) => {
+                if (!userDocRef) return;
+                try {
+                    if (isCompleted) {
+                        await updateDoc(userDocRef, { completed: arrayUnion(projectId) });
+                    } else {
+                        await updateDoc(userDocRef, { completed: arrayRemove(projectId) });
+                    }
+                } catch (error) {
+                    console.error("Failed to update progress:", error);
+                }
+            };
+
+            const initializeAppUI = () => {
+                projectsGrid.addEventListener('click', (e) => {
+                    const card = e.target.closest('.project-card');
+                    if (!card) return;
+                    
+                    const projectId = parseInt(card.dataset.id);
+                    if (e.target.type === 'checkbox') {
+                        handleProjectCompletion(projectId, e.target.checked);
+                    } else {
+                        openModal(projectId);
+                    }
+                });
+
+                filterBtns.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        state.filter = btn.dataset.filter;
+                        filterBtns.forEach(b => {
+                            b.classList.remove('bg-sky-600', 'text-white');
+                            b.classList.add('bg-white', 'text-sky-700');
+                        });
+                        btn.classList.add('bg-sky-600', 'text-white');
+                        btn.classList.remove('bg-white', 'text-sky-700');
+                        renderProjects();
+                    });
+                });
+
+                modalClose.addEventListener('click', closeModal);
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) closeModal();
+                });
+
+                const skillsChartCtx = document.getElementById('skillsChart').getContext('2d');
+                new Chart(skillsChartCtx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['Backend', 'Data Eng.', 'MLOps', 'Performance', 'DevOps/Cloud'],
+                        datasets: [{
+                            label: 'Focus Areas',
+                            data: [2, 2, 2, 3, 3],
+                            fill: true,
+                            backgroundColor: 'rgba(2, 132, 199, 0.2)',
+                            borderColor: 'rgb(2, 132, 199)',
+                            pointBackgroundColor: 'rgb(2, 132, 199)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgb(2, 132, 199)'
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            r: {
+                                angleLines: { color: 'rgba(0, 0, 0, 0.1)' },
+                                grid: { color: 'rgba(0, 0, 0, 0.1)' },
+                                pointLabels: { font: { size: 12, weight: 'bold' }, color: '#44403c' },
+                                ticks: { backdropColor: 'rgba(250, 250, 250, 0)', stepSize: 1, display: false }
+                            }
+                        }
+                    }
+                });
+
+                renderProjects();
+                updateProgress();
+            };
+
+            initializeFirebase();
+        });
+    </script>
+</body>
+</html>
